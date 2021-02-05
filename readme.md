@@ -15,3 +15,5 @@ Red stars spawn more often as you build your combo, reaching 100% spawn rate at 
 Play where the stars spawn according to the music. The goal is that each star hits your shield at the same time in which lyrics is played in the music track. (This isn't always accurate)
 
 Red stars spawn whenever the game is more confident that that point reflects a lyric.
+
+Green stars spawn when the game decides that the star is too close to the previous star such that it would be very hard/impossible to block both, so the star is forced into the same lane as the previous star. Green stars are worth 1 point.

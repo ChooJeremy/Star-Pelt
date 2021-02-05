@@ -292,7 +292,7 @@ Star = function(game) {
 };
 Star.prototype = Object.create(Phaser.Sprite.prototype);
 Star.prototype.constructor = Star;
-Star.prototype.init = function(x, y, xv, yv, players, isRed) {
+Star.prototype.init = function(x, y, xv, yv, players, color) {
 	this.active = true;
 	this.visible = true;
 	this.xvelocity = xv;
@@ -317,10 +317,15 @@ Star.prototype.init = function(x, y, xv, yv, players, isRed) {
 		this.associatedPlayer = players[3];
 	}
 
-	if(isRed)
+	if(color == "red")
 	{
 		this.loadTexture('redstar', 0, false);
 		this.scoreGain = 2;
+	}
+	else if(color == "green")
+	{
+		this.loadTexture('greenstar', 0, false);
+		this.scoreGain = 1;
 	}
 	else
 	{
@@ -681,6 +686,7 @@ function preload() {
 	game.load.image('line_select', 'images/line_selected.png');
 	game.load.image('star', 'images/star.png');
 	game.load.image('redstar', 'images/redstar.png');
+	game.load.image('greenstar', 'images/greenstar.png');
 	game.load.image('xIcon', 'images/x.png');
 	game.load.image('particle', 'images/particle.png');
 	game.load.image('immune', 'images/immune.png');
@@ -1219,6 +1225,7 @@ function update() {
 			var spawnX = game.width/2;
 			var spawnY = game.height/2;
 			var randomNumber;
+			var spawnGreenStar = false;
 
 			if(starSpawnsMerged.length === 0 || lastSpawnedSide === undefined)
 			{
@@ -1228,6 +1235,7 @@ function update() {
 			else
 			{
 				randomNumber = lastSpawnedSide;
+				spawnGreenStar = true
 			}
 			if(randomNumber == 0)
 			{
@@ -1258,18 +1266,28 @@ function update() {
 				spawnY = game.height;
 			}
 
+			var color = "yellow"
+
 			if(starSpawnsMerged.length  == 0)
 			{
 				//Calculate whether to spawn a new star or not, based on combo
 				var redStarSpawnChance = Math.pow(combo, 2) / 900;
 				//Chance increases exponentially from 0% at combo 0 to 100% at combo 400.
-
-				newStar.init(spawnX, spawnY, xVelocity, yvelocity, players, Math.random() * 100 < redStarSpawnChance);
+				if (Math.random() * 100 < redStarSpawnChance) {
+					color = "red";
+				}
 			}
 			else
 			{
-				newStar.init(spawnX, spawnY, xVelocity, yvelocity, players, starSpawnsRed.indexOf(starSpawnsMerged[audioCounter - 1]) !== -1)
+				if (starSpawnsRed.indexOf(starSpawnsMerged[audioCounter - 1]) !== -1) {
+					color = "red";
+				}
 			}
+			if(spawnGreenStar) {
+				color = "green";
+			}
+
+			newStar.init(spawnX, spawnY, xVelocity, yvelocity, players, color);
 
 			if(starSpawnsMerged.length > 0)
 			{
