@@ -1,0 +1,902 @@
+<!doctype html> 
+<html lang="en"> 
+<head> 
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width; initial-scale=1.0; maximum-scale=1.0; user-scalable=0;"> 
+	<title>Star Pelt</title>
+	<script src="../js/phaser.min.js"></script>
+	<style type="text/css">
+		body canvas {
+			margin: 0 auto;
+			width: 800px;
+		}
+	</style>
+</head>
+<body>
+
+<script type="text/javascript">
+
+var game = new Phaser.Game(800, 1000, Phaser.AUTO, '', { preload: preload, create: create, update: update });
+
+SingleLine = function(game, x, y, index) {
+	Phaser.Sprite.call(this, game, x, y, 'line');
+
+	this.angle = index*90;
+	this.anchor.x = 0.5;
+	this.anchor.y = 0.5;
+	this.plannedXMovement = 0;
+	this.plannedYMovement = 0;
+	this.xMoveRemaining = 0;
+	this.yMoveRemaining = 0;
+	this.movementDelay = 0;
+	this.x -= Math.cos(game.math.degToRad(this.angle)) * distanceFromCenter;
+	this.y -= Math.sin(game.math.degToRad(this.angle)) * distanceFromCenter;
+
+	this.others = [];
+	this.myEvent = null;
+	this.activated = false;
+
+	game.add.existing(this);
+};
+
+SingleLine.prototype = Object.create(Phaser.Sprite.prototype);
+SingleLine.prototype.constructor = SingleLine;
+SingleLine.prototype.activate = function() {
+	this.loadTexture('line_select', 0, false);
+	if(this.myEvent !== null)
+	{
+		game.time.events.remove(this.myEvent);
+	}
+	//this.myEvent = game.time.events.add(1000, this.deactivate, this);
+	for(var i = 0; i < 3; i++)
+	{
+		this.others[i].deactivate();
+	}
+	this.activated = true;
+}
+SingleLine.prototype.deactivate = function() {
+	//game.time.events.remove(this.myEvent);
+	this.myEvent = null;
+	this.loadTexture('line', 0, false);
+	this.activated = false;
+}
+SingleLine.prototype.addOthers = function(o) {
+	this.others = o;
+}
+SingleLine.prototype.isActivated = function() {
+	return this.activated;
+}
+//Tells the line to move a certain distance AFTER 1 SECOND
+//the delay is required for star appearance to reflect the new location immediately.
+SingleLine.prototype.move = function(xDistance, yDistance) {
+	this.plannedXMovement = xDistance;
+	this.plannedYMovement = yDistance;
+	this.xMoveRemaining = xDistance;
+	this.yMoveRemaining = yDistance;
+	this.movementDelay = 1000;
+}
+SingleLine.prototype.update = function() {
+	if(this.movementDelay > 0)
+	{
+		this.movementDelay -= this.game.time.elapsedMS;
+	}
+	if(this.movementDelay <= 0)
+	{
+		if(this.xMoveRemaining !== 0)
+		{
+			var amountToMove = this.plannedXMovement * this.game.time.elapsedMS/1000;
+			if((amountToMove > 0 && amountToMove > this.xMoveRemaining) ||
+				(amountToMove < 0 && amountToMove < this.xMoveRemaining))
+			{
+				amountToMove = this.xMoveRemaining;
+				this.xMoveRemaining = 0;
+			}
+			else
+			{
+				this.xMoveRemaining -= amountToMove;
+			}
+			this.x += amountToMove;
+		}
+		if(this.yMoveRemaining !== 0)
+		{
+			var amountToMove = this.plannedYMovement * this.game.time.elapsedMS/1000;
+			if((amountToMove > 0 && amountToMove > this.yMoveRemaining) ||
+				(amountToMove < 0 && amountToMove < this.yMoveRemaining))
+			{
+				amountToMove = this.yMoveRemaining;
+				this.yMoveRemaining = 0;
+			}
+			else
+			{
+				this.yMoveRemaining -= amountToMove;
+			}
+			this.y += amountToMove;
+		}
+	}
+}
+//Calculates where this line's x location should be after typicalTime has passed.
+//Therefore, given that a star will be spawning now, by the time it _should_ be reaching
+//this line, where is this line's x location?
+SingleLine.prototype.finalX = function() {
+	//No movement planned
+	if(this.xMoveRemaining === 0)
+	{
+		return this.x;
+	}
+	else
+	{
+		var timeToConsider = typicalTime - this.movementDelay;
+		//This line won't have moved yet
+		if(timeToConsider < 0)
+		{
+			return this.x;
+		}
+		else
+		{
+			var amountToMove = this.plannedXMovement * timeToConsider/1000;
+			if((amountToMove > 0 && amountToMove > this.xMoveRemaining) ||
+				(amountToMove < 0 && amountToMove < this.xMoveRemaining))
+			{
+				amountToMove = this.xMoveRemaining;
+			}
+			return this.x + amountToMove;
+		}
+	}
+}
+//See finalX method
+SingleLine.prototype.finalY = function() {
+	if(this.yMoveRemaining === 0)
+	{
+		return this.y;
+	}
+	else
+	{
+		var timeToConsider = typicalTime - this.movementDelay;
+		if(timeToConsider < 0)
+		{
+			return this.y;
+		}
+		else
+		{
+			var amountToMove = this.plannedYMovement * timeToConsider/1000;
+			if((amountToMove > 0 && amountToMove > this.yMoveRemaining) ||
+				(amountToMove < 0 && amountToMove < this.yMoveRemaining))
+			{
+				amountToMove = this.yMoveRemaining;
+			}
+			return this.y + amountToMove;
+		}
+	}
+}
+
+StarPool = function(game) {
+	this.inactiveStars = [];
+	this.activeStars = [];
+	this.gameReference = game;
+};
+StarPool.prototype.constructor = StarPool;
+StarPool.prototype.getStars = function() {
+	//console.log("Get stars called");
+	if(this.inactiveStars.length > 0)
+	{
+		var returnValue = this.inactiveStars[0];
+		this.activeStars.push(returnValue);
+		this.inactiveStars.splice(0, 1);
+		return returnValue;
+	}
+	else
+	{
+		//console.log("Looking through active stars for an inactive star...");
+		for(var i = this.activeStars.length - 1; i > 0; i--)
+		{
+			if(this.activeStars[i].active === false)
+			{
+				this.inactiveStars.push(this.activeStars[i]);
+				this.activeStars.splice(i, 1);
+			}
+		}
+		if(this.inactiveStars.length > 0)
+		{
+			//console.log("Found an inactive star, returning...");
+			var returnValue = this.inactiveStars[0];
+			this.activeStars.push(returnValue);
+			this.inactiveStars.splice(0, 1);
+			return returnValue;
+		}
+		else
+		{
+			//console.log("None found, creating a new one and returning...");
+			var returnValue = new Star(this.gameReference);
+			this.activeStars.push(returnValue);
+			//physicsSystem.enable(returnValue);
+			return returnValue;
+		}
+	}
+}
+StarPool.prototype.updateAll = function() {
+	for(var i = 0; i < this.activeStars.length; i++)
+	{
+		this.activeStars[i].update();
+	}
+}
+StarPool.prototype.stopAll = function() {
+	for(var i = 0; i < this.activeStars.length; i++)
+	{
+		this.activeStars[i].active = false;
+		this.activeStars[i].visible = false;
+	}
+}
+
+Star = function(game) {
+	Phaser.Sprite.call(this, game, 0, 0, 'star');
+
+	this.active = false;
+	this.visible = false;
+	this.xvelocity = 0;
+	this.yvelocity = 0;
+	this.anchor.x = 0.5;
+	this.anchor.y = 0.5;
+	this.xLimit = 0;
+	this.yLimit = 0;
+	this.associatedPlayer = 0;
+
+	game.add.existing(this);
+};
+Star.prototype = Object.create(Phaser.Sprite.prototype);
+Star.prototype.constructor = Star;
+Star.prototype.init = function(x, y, xv, yv, players) {
+	this.active = true;
+	this.visible = true;
+	this.xvelocity = xv;
+	this.yvelocity = yv;
+	this.x = x;
+	this.y = y;
+
+	if(this.xvelocity > 0)
+	{
+		this.associatedPlayer = players[0];
+	}
+	else if(this.xvelocity < 0)
+	{
+		this.associatedPlayer = players[2];
+	}
+	else if(this.yvelocity > 0)
+	{
+		this.associatedPlayer = players[1];
+	}
+	else if(this.yvelocity < 0)
+	{
+		this.associatedPlayer = players[3];
+	}
+
+	//console.log("Star init called and completed");
+}
+Star.prototype.update = function() {
+	if(this.active)
+	{
+		this.x += this.xvelocity * game.time.elapsedMS;
+		this.y += this.yvelocity * game.time.elapsedMS;
+		
+		if(this.associatedPlayer.isActivated() && this.checkForCollision())
+		{
+			//Score!
+			this.visible = false;
+			this.active = false;
+			score++;
+			combo++;
+			if(maxCombo < combo)
+			{
+				maxCombo = combo;
+			}
+			emitter.x = this.x;
+			emitter.y = this.y;
+			var particlesToCreate = Math.floor(Math.random() * 6) + 6;
+			emitter.start(true, 500, null, particlesToCreate);
+			playRandomHitSound();
+			
+			//Check if movement planned
+			if(scoreIntervals.length > 0 && scoreIntervals[0] === score)
+			{
+				plannedMovements[0]();
+				scoreIntervals.splice(0, 1);
+				plannedMovements.splice(0, 1);
+			}
+		}
+		else if(this.checkForFailure())
+		{
+			//Fail
+			this.active = false;
+			this.visible = false;
+
+			if(currentlyImmune > 0)
+			{
+				//new XIcon(this.game, this.x, this.y, true);
+				//WAAY too large
+			}
+			else
+			{
+				new XIcon(this.game, this.x, this.y, false);
+				combo = 0;
+				lives--;
+				playRandomMissSound();
+				currentlyImmune = 500;
+				if(lives == 0)
+				{
+					gameOver();
+				}
+			}
+		}
+	}
+}
+Star.prototype.checkForCollision = function() {
+	if(this.active)
+	{
+		//Left player
+		if(this.xvelocity > 0 && this.associatedPlayer.x < this.x + 20)
+		{
+			return true;
+		}
+		//Right player
+		else if(this.xvelocity < 0 && this.associatedPlayer.x > this.x - 20)
+		{
+			return true;
+		}
+		//top player
+		else if(this.yvelocity > 0 && this.associatedPlayer.y < this.y + 20)
+		{
+			return true;
+		}
+		//Bottom player
+		else if(this.yvelocity < 0 && this.associatedPlayer.y > this.y - 20)
+		{
+			return true;
+		}
+		return false;
+	}
+}
+Star.prototype.checkForFailure = function() {
+	if(this.active)
+	{
+		//Left player
+		if(this.xvelocity > 0 && this.associatedPlayer.x + 20 < this.x)
+		{
+			return true;
+		}
+		//Right player
+		else if(this.xvelocity < 0 && this.associatedPlayer.x - 20 > this.x)
+		{
+			return true;
+		}
+		//top player
+		else if(this.yvelocity > 0 && this.associatedPlayer.y + 20 < this.y)
+		{
+			return true;
+		}
+		//Bottom player
+		else if(this.yvelocity < 0 && this.associatedPlayer.y - 20 > this.y)
+		{
+			return true;
+		}
+		return false;
+	}
+}
+
+XIcon = function(game, x, y, immuneInstead) {
+	if(!immuneInstead)
+	{
+		Phaser.Sprite.call(this, game, x, y, 'xIcon');
+	}
+	else
+	{
+		Phaser.Sprite.call(this, game, x, y, 'immune');
+	}
+
+	//I want the X to move 30pixels up in the course of 0.1s
+	this.amountLeftToMove = -30;
+	this.timeGiven = 100;
+	this.timer = 2000;
+	this.anchor.x = 0.5;
+	this.anchor.y = 0.5;
+
+	game.add.existing(this);
+};
+XIcon.prototype = Object.create(Phaser.Sprite.prototype);
+XIcon.prototype.constructor = XIcon;
+XIcon.prototype.update = function() {
+	var amountToMove = -30 * game.time.elapsedMS/this.timeGiven;
+	if(this.amountLeftToMove > amountToMove)
+	{
+		amountToMove = this.amountLeftToMove;
+	}
+	this.amountLeftToMove -= amountToMove;
+	this.y += amountToMove;
+
+	this.timer -= game.time.elapsedMS;
+	if(this.timer <= 0)
+	{
+		this.destroy();
+	}
+}
+
+FlashingArrow = function(game, x, y, index) {
+	Phaser.Sprite.call(this, game, x, y, 'tutorial_arrow');
+
+	this.angle = index*90;
+	this.anchor.x = 0.5;
+	this.anchor.y = 0.5;
+	this.x -= Math.cos(game.math.degToRad(this.angle)) * (distanceFromCenter + 60);
+	this.y -= Math.sin(game.math.degToRad(this.angle)) * (distanceFromCenter + 60);
+	this.changeDirection = -1;
+	this.minAlpha = 0.5;
+
+	game.add.existing(this);
+};
+
+FlashingArrow.prototype = Object.create(Phaser.Sprite.prototype);
+FlashingArrow.prototype.constructor = FlashingArrow;
+FlashingArrow.prototype.update = function() {
+	if(this.visible)
+	{
+		this.alpha += this.changeDirection*0.001*this.game.time.elapsedMS;
+
+		if(this.alpha >= 1)
+		{
+			this.changeDirection = -1;
+			this.alpha = 1;
+		}
+		else if(this.alpha <= this.minAlpha)
+		{
+			this.changeDirection = 1;
+			this.alpha = this.minAlpha;
+		}
+	}
+	this.visible = showTutorial;
+}
+
+MobileKey = function(game, x, y, sprite, correspondingPlayer) {
+	Phaser.Sprite.call(this, game, x, y, sprite);
+
+	this.anchor.x = 0.5;
+	this.anchor.y = 0.5;
+	this.corrPlayer = correspondingPlayer;
+	this.inputEnabled = true;
+	this.events.onInputDown.add(this.onPress, this);
+
+	game.add.existing(this);
+}
+
+MobileKey.prototype = Object.create(Phaser.Sprite.prototype);
+MobileKey.prototype.constructor = MobileKey;
+MobileKey.prototype.onPress = function() {
+	this.corrPlayer.activate();
+}
+
+function preload() {
+	game.scale.scaleMode = Phaser.ScaleManager.SHOW_ALL;
+	//resize the body when necessary
+	/*game.scale.onSizeChange = function () {
+		var body = document.getElementById("body");
+		body.style.width = game.width;
+	}*/
+
+	game.load.image('line', 'images/line.png')
+	game.load.image('line_select', 'images/line_selected.png');
+	game.load.image('star', 'images/star.png');
+	game.load.image('xIcon', 'images/x.png');
+	game.load.image('particle', 'images/particle.png');
+	game.load.image('immune', 'images/immune.png');
+	game.load.image('tutorial_arrow', 'images/arrow.png');
+	game.load.image('restart', 'images/restart.png');
+	game.load.image('up_mobile', 'images/up_mobile.png');
+	game.load.image('left_mobile', 'images/left_mobile.png');
+	game.load.image('down_mobile', 'images/down_mobile.png');
+	game.load.image('right_mobile', 'images/right_mobile.png');
+
+	for(var i = 1; i < 11; i++)
+	{
+		game.load.audio('piano_' + i, 'sounds/piano_' + i + '.wav');
+	}
+	for(var i = 1; i < 6; i++)
+	{
+		game.load.audio('piano_low_' + i, 'sounds/piano_low_' + i + '.wav');
+	}
+}
+
+var players;
+var distanceFromCenter = 60;
+//var upKey, downKey, leftKey, rightKey;
+var arrowPress;
+var starPool;
+var myTimer, nextBallAppearanceTime;
+//var physicsSystem;
+var emitter;
+var score = 0, combo = 0, lives = 3, maxCombo = 0;
+var scoreText;
+var hitSounds = [];
+var missSounds = [];
+var started = false;
+var currentlyImmune = 0;
+var showTutorial = true;
+var typicalTime; //Typical time taken for a star to reach the line, in milliseconds
+var scoreIntervals, plannedMovements;
+var restartSprite = null;
+
+function create() {
+	game.stage.backgroundColor = "#ffffff";
+	starPool = new StarPool(game);
+	//Make fps work, otherwise game will not bother
+	game.time.advancedTiming = true;
+	//physicsSystem = new Phaser.Physics.Arcade(game);
+	emitter = game.add.emitter(0, 0, 200);
+	emitter.makeParticles('particle');
+	emitter.gravity = 200;
+
+	var typicalDistance = game.width/2 - 60;
+	typicalTime = typicalDistance/0.5; //In milliseconds, moving 0.5px per millisecond
+
+	for(var i = 1; i < 11; i++)
+	{
+		hitSounds.push(game.add.audio('piano_' + i));
+	}
+	for(var i = 1; i < 6; i++)
+	{
+		missSounds.push(game.add.audio('piano_low_' + i));
+	}
+	game.sound.setDecodedCallback(hitSounds.concat(missSounds), ready, this);
+
+	//Below line doesn't work. TypeError: a.setStageReference is not a function
+	//scoreText = new Text(game, 0, 0, 'Default text', {font: '65px Arial', fill: '#000'});
+	//game.add.existing(scoreText);
+	scoreText = game.add.text(16, 16, 'score: 0', { fontSize: '20px', fill: '#000' });
+
+	players = [];
+
+	for(var i = 0; i < 4; i++)
+	{       
+		players.push(new SingleLine(game, game.width/2, (game.height - 100)/2, i));
+		new FlashingArrow(game, game.width/2, (game.height - 100)/2, i);
+	}
+
+	for(var i = 0; i < 4; i++)
+	{
+		var otherPlayers = [];
+		for(var j = 0; j < 4; j++)
+		{
+			if(j !== i)
+			{
+				otherPlayers.push(players[j]);
+			}
+		}
+		players[i].addOthers(otherPlayers);
+	}
+	//physicsSystem.enable(players);
+
+	var keysToBind = [Phaser.KeyCode.UP, Phaser.KeyCode.DOWN, Phaser.KeyCode.LEFT, Phaser.KeyCode.RIGHT, Phaser.KeyCode.W, Phaser.KeyCode.A, Phaser.KeyCode.S, Phaser.KeyCode.D, Phaser.KeyCode.I, Phaser.KeyCode.J, Phaser.KeyCode.K, Phaser.KeyCode.L, Phaser.KeyCode.R];
+
+	for(var i = 0; i < keysToBind.length; i++)
+	{
+		var thisKey = game.input.keyboard.addKey(keysToBind[i]);
+		thisKey.onDown.add(arrowPress, this);
+	}
+/*
+	upKey = game.input.keyboard.addKey(Phaser.KeyCode.UP);
+	upKey.onDown.add(arrowPress, this);
+	downKey = game.input.keyboard.addKey(Phaser.KeyCode.DOWN);
+	downKey.onDown.add(arrowPress, this);
+	leftKey = game.input.keyboard.addKey(Phaser.KeyCode.LEFT);
+	leftKey.onDown.add(arrowPress, this);
+	rightKey = game.input.keyboard.addKey(Phaser.KeyCode.RIGHT);
+	rightKey.onDown.add(arrowPress, this);*/
+
+	//Setup mobile keys
+	new MobileKey(game, 130, game.height - 50, 'left_mobile', players[0]);
+	new MobileKey(game, game.width/2, game.height - 150, 'up_mobile', players[1]);
+	new MobileKey(game, game.width - 130, game.height - 50, 'right_mobile', players[2]);
+	new MobileKey(game, game.width/2, game.height - 50, 'down_mobile', players[3]);
+
+	reset();
+}
+
+function ready() {
+	started = true;
+}
+
+function update() {
+	if(started) {
+		myTimer -= game.time.elapsedMS;
+		nextBallAppearanceTime -= game.time.elapsedMS;
+		if(currentlyImmune > 0)
+		{
+			currentlyImmune -= game.time.elapsedMS;
+		}
+		else
+		{
+			currentlyImmune = 0;
+		}
+	}
+	if(nextBallAppearanceTime <= 0 && lives > 0)
+	{
+		showTutorial = false;
+		
+		var newStar = starPool.getStars();
+		var xVelocity = 0;
+		var yvelocity = 0;
+		var spawnX = game.width/2;
+		var spawnY = (game.height - 100)/2;
+
+		var randomNumber = Math.floor(Math.random() * 4);
+		if(randomNumber == 0)
+		{
+			//Coming from left
+			xVelocity = calculateRequiredSpeed(players[0].x - 20, myTimer - nextBallAppearanceTime);
+			spawnX = 0;
+			spawnY = players[0].finalY();
+		}
+		else if(randomNumber == 1)
+		{
+			//Coming from top
+			yvelocity = calculateRequiredSpeed(players[1].y - 20, myTimer - nextBallAppearanceTime);
+			spawnX = players[1].finalX();
+			spawnY = 0;
+		}
+		else if(randomNumber == 2)
+		{
+			//Coming from right
+			xVelocity = calculateRequiredSpeed(game.width - players[2].x + 20, myTimer - nextBallAppearanceTime) * -1;
+			spawnX = game.width;
+			spawnY = players[2].finalY();
+		}
+		else
+		{
+			//Coming from bottom
+			yvelocity = calculateRequiredSpeed((game.height - 100) - players[3].y + 20, myTimer - nextBallAppearanceTime) * -1;
+			spawnX = players[3].finalX();
+			spawnY = (game.height - 100);
+		}
+
+		newStar.init(spawnX, spawnY, xVelocity, yvelocity, players);
+
+		myTimer += randomNextTimerIncrease();
+		if(score < 300)
+		{
+			nextBallAppearanceTime = myTimer;
+		}
+		else
+		{
+			//From 300 to 600, increase the variation in possible speed
+			var possibleChange = (Math.random() * Math.min(150, (score - 300)/2)) - Math.min(75, (score - 300)/4);
+			nextBallAppearanceTime = myTimer + possibleChange;
+		}
+	}
+
+	scoreText.text = "Score: " + score + "\nCombo: " + combo + "\nHighest Combo: " + maxCombo + "\nLives: " + lives + "\nFPS: " + game.time.fps;
+
+	//Check for movement above score 1100
+	if(scoreIntervals.length === 0)
+	{
+		scoreIntervals.push(Math.floor(Math.random() * 100) + score + 1);
+		plannedMovements.push(movePlayerRandom);
+	}
+}
+
+var arrowPress = function(key) {
+	switch(key.keyCode)
+	{
+		case Phaser.KeyCode.UP:
+		case Phaser.KeyCode.W:
+		case Phaser.KeyCode.I:
+			players[1].activate();
+			break;
+		case Phaser.KeyCode.DOWN:
+		case Phaser.KeyCode.S:
+		case Phaser.KeyCode.K:
+			players[3].activate();
+			break;
+		case Phaser.KeyCode.LEFT:
+		case Phaser.KeyCode.A:
+		case Phaser.KeyCode.J:
+			players[0].activate();
+			break;
+		case Phaser.KeyCode.RIGHT:
+		case Phaser.KeyCode.D:
+		case Phaser.KeyCode.L:
+			players[2].activate();
+			break;
+		case Phaser.KeyCode.R:
+			reset();
+			break;
+	}
+}
+
+function playRandomHitSound() {
+	var randomInt = Math.floor(Math.random() * hitSounds.length);
+	hitSounds[randomInt].play();
+}
+
+function playRandomMissSound() {
+	var randomInt = Math.floor(Math.random() * missSounds.length);
+	missSounds[randomInt].play();
+}
+
+//Returns how much the game should wait (in milliseconds) until the next star spawns.
+//Influence - Optional - A positive influence will increase the changes of the return value being higher, while
+//a negative influence will increase the changes ofthe return value being lower. The further the value is away
+//from 0, thie higher the chance.
+function randomNextTimerIncrease(influence) {
+	if(influence === undefined) {
+		influence = 0;
+	}
+	//Blocking it off in case it gets too far off
+	if(influence > 1000 && Math.random() > 0.3)
+	{
+		return 1000;
+	}
+	else if(influence < -1000 && Math.random() > 0.3)
+	{
+		return 0;
+	}
+
+	var probabilityForRandomDuration = (Math.min(40, Math.max(0, score - 10)))* (1/40);
+	var probabilityForSmallDuration = (Math.min(200, Math.max(0, score - 50)))* (1/200);
+
+	var potentialMaximumInteger = (1 + probabilityForRandomDuration + probabilityForSmallDuration);
+	//console.log(probabilityForSmallDuration + " - " + probabilityForRandomDuration + " - " + potentialMaximumInteger);
+
+	var randomInt = Math.floor(Math.random() * potentialMaximumInteger);
+	if(randomInt == 0)
+	{
+		return Math.floor(Math.random() * 100 + influence) + 500;
+	}
+	else if(randomInt == 1)
+	{
+		return Math.floor(Math.random() * 400 + influence) + 200;
+	}
+	else if(randomInt == 2)
+	{
+		return Math.floor(Math.random() * 100 + influence) + 200;
+	}
+}
+
+//Calculates the required speed for a star to reach the object.
+//If timediff is 0, speed is 0.5.
+//Depending on timediff, speed will be adjusted so that the object reaches the required distance within the time
+//The distance may also differ from the typical distance (Half of game width - 80). If so, speed will be adjusted as well.
+function calculateRequiredSpeed(distance, timeDiff) {
+	//Calculate typical time taken to complete that distance
+	var expectedTime = typicalTime + timeDiff;
+	return distance/expectedTime;
+}
+
+function gameOver() {
+	restartSprite = game.add.sprite(game.width/2, (game.height - 100)/2, 'restart');
+	restartSprite.inputEnabled = true;
+	restartSprite.anchor.x = 0.5;
+	restartSprite.anchor.y = 0.5;
+	restartSprite.events.onInputDown.add(function() {
+		reset();
+	}, restartSprite);
+	
+	movePlayersBack();
+}
+
+//Move players back to normal position
+function movePlayersBack()
+{
+	for(var i = 0; i < 4; i++)
+	{       
+		var angle = i*90;
+		var expectedX = game.width/2 - Math.cos(game.math.degToRad(angle)) * distanceFromCenter;
+		var expectedY = (game.height - 100)/2 - Math.sin(game.math.degToRad(angle)) * distanceFromCenter;
+		players[i].move(expectedX - players[i].x, expectedY - players[i].y);
+	}
+}
+
+function movePlayerRandom()
+{
+	// 0 1 2
+	// 3 4 5
+	// 6 7 8
+	var randomSpot = Math.floor(Math.random() * 9);
+	var plannedXDifference = 0, plannedYDifference = 0;
+	if(randomSpot % 3 === 0)
+	{
+		plannedXDifference = game.width/-4;
+	}
+	else if(randomSpot % 3 === 2)
+	{
+		plannedXDifference = game.width/4;
+	}
+
+	if(randomSpot <= 2)
+	{
+		plannedYDifference = (game.height - 100)/-4;
+	}
+	else if(randomSpot >= 6)
+	{
+		plannedYDifference = (game.height - 100)/4;
+	}
+
+	for(var i = 0; i < 4; i++)
+	{       
+		var angle = i*90;
+		var expectedX = game.width/2 - Math.cos(game.math.degToRad(angle)) * distanceFromCenter;
+		expectedX += plannedXDifference;
+		var expectedY = (game.height - 100)/2 - Math.sin(game.math.degToRad(angle)) * distanceFromCenter;
+		expectedY += plannedYDifference;
+		players[i].move(expectedX - players[i].x, expectedY - players[i].y);
+	}
+}
+
+function reset() {
+	if(restartSprite !== null)
+	{
+		restartSprite.destroy();
+		restartSprite = null;
+	}
+
+	myTimer = 1500;
+	nextBallAppearanceTime = 1500;
+	score = 0;
+	lives = 3;
+	combo = 0;
+	maxCombo = 0;
+	showTutorial = true;
+
+	starPool.stopAll();
+
+	//Movement plans in difficulty:
+	//At a random score within the boundaries:
+	//from 500-600, move RIGHT
+	//from 600-700, move LEFT
+	//from 700-800, move LEFT
+	//At 800, move back to normal
+	//from 800-900, move UP
+	//from 900-1000, move DOWN
+	//from 1000-1100, move DOWN
+	//At 1100, move back to normal
+	//At random intervals every 100score, pick a random spot in the 3*3 grid, move there
+	var moveLeft = function() {
+		for(var i = 0; i < players.length; i++)
+		{
+			players[i].move(game.width/-4, 0);
+		}
+	}
+	var moveRight = function() {
+		for(var i = 0; i < players.length; i++)
+		{
+			players[i].move(game.width/4, 0);
+		}
+	}
+	var moveUp = function() {
+		for(var i = 0; i < players.length; i++)
+		{
+			players[i].move(0, (game.height - 100)/-4);
+		}
+	}
+	var moveDown = function() {
+		for(var i = 0; i < players.length; i++)
+		{
+			players[i].move(0, (game.height - 100)/4);
+		}
+	}
+	scoreIntervals = [];
+	//plannedMovements = [];
+	plannedMovements = [moveRight, moveLeft, moveLeft, movePlayersBack, moveUp, moveDown, moveDown, movePlayersBack];
+	for(var i = 0; i < 6; i++)
+	{
+		scoreIntervals.push(Math.floor(Math.random() * 100) + ((i+5) * 100))
+		if(i == 2)
+		{
+			scoreIntervals.push(800);
+		}
+		else if(i == 5)
+		{
+			scoreIntervals.push(1100);
+		}
+	}
+}
+
+</script>
+
+</body>
+</html>

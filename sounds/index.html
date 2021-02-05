@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Jquery is useless</title>
+		<meta charset="utf-8" />
+		<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+	</head>
+	<body>
+		<script type="text/javascript">
+		var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+		source = audioCtx.createBufferSource();
+
+		var analyser, bufferLength, dataArray;
+
+		var request = new XMLHttpRequest();
+		request.open('GET', 'dejavu.mp3', true);
+		request.responseType = 'arraybuffer';
+
+		request.onload = function() {
+			console.log("Reply received");
+			audiodata = request.response;
+			console.log(audiodata);												
+			audioCtx.decodeAudioData(audiodata, function(buffer) {
+				console.log("Data decoded");
+				source.connect(audioCtx.destination);
+				source.buffer = buffer;
+				source.loop = true;
+
+				/*
+				
+				analyser = source.context.createAnalyser();
+				source.connect(analyser);
+				analyser.connect(audioCtx.destination);
+				//analyser.minDecibels = -90;
+				//analyser.maxDecibels = -10;
+
+				analyser.fftSize = 2048;
+				bufferLength = analyser.frequencyBinCount;
+				console.log(bufferLength);
+				dataArray = new Uint8Array(bufferLength);
+
+				analyser.getByteTimeDomainData(dataArray);
+				console.log(dataArray);
+
+				for(var i = 0; i < dataArray.length; i++)
+				{
+					if(dataArray[i] !== 128)
+					{
+						console.log("Non 128 value detected at pos " + i + ", it's " + dataArray[i]);
+					}
+				}
+
+				console.log("All done!");*/
+
+				//All right, let's get to work.
+				//Take the source buffer for the channel (we'll just use 1 for simplicity, average it out to over a second)
+				//If the difference between the channels in seconds is too large, mark the second one as a point to spawn a star
+			});
+		};
+		request.send();
+
+		function getPeaks(percentageOfSecond)
+		{
+			var channelData = source.buffer.getChannelData(0);
+			var lowPeaks = [], highPeaks = [];
+			var min = 0, max = 0;
+			var counter = 0;
+
+			for(var i = 0; i < channelData.length; i++)
+			{
+				if(counter != 0 && counter % (source.buffer.sampleRate * percentageOfSecond) == 0)
+				{
+					lowPeaks.push(min);
+					highPeaks.push(max);
+					min = 0;
+					max = 0;
+				}
+				if(min == 0 && max == 0)
+				{
+					min = channelData[i];
+					max = channelData[i];
+				}
+				if(channelData[i] > max)
+				{
+					max = channelData[i];
+				}
+				else if(channelData[i] < min)
+				{
+					min = channelData[i];
+				}
+				counter++;
+			}
+			console.log(lowPeaks);
+			console.log(highPeaks);
+
+			//Calculate when stars should spawn
+			//var starSpawnsLow = [];
+			//var starSpawnsHigh = [];
+			var starSpawnsMerged = [];
+			for(var i = 1; i < lowPeaks.length && i < highPeaks.length; i++)
+			{
+				if((Math.abs(lowPeaks[i]) - Math.abs(lowPeaks[i-1]) > 0.3) && (Math.abs(highPeaks[i]) - Math.abs(highPeaks[i-1]) > 0.3))
+				{
+					starSpawnsMerged.push(i * percentageOfSecond);
+				}
+			}
+
+			console.log("Star spawning times:");
+			//console.log(starSpawnsLow);
+			//console.log(starSpawnsHigh);
+			console.log(starSpawnsMerged);
+		}
+
+		/*canvasCtx.clearRect(0, 0, WIDTH, HEIGHT);
+
+		function draw() {
+		  drawVisual = requestAnimationFrame(draw);
+
+		  analyser.getByteFrequencyData(dataArray);
+
+		  canvasCtx.fillStyle = 'rgb(0, 0, 0)';
+		  canvasCtx.fillRect(0, 0, WIDTH, HEIGHT);
+
+		  var barWidth = (WIDTH / bufferLength) * 2.5;
+		  var barHeight;
+		  var x = 0;
+
+		  for(var i = 0; i < bufferLength; i++) {
+		    barHeight = dataArray[i];
+
+		    canvasCtx.fillStyle = 'rgb(' + (barHeight+100) + ',50,50)';
+		    canvasCtx.fillRect(x,HEIGHT-barHeight/2,barWidth,barHeight/2);
+
+		    x += barWidth + 1;
+		  }
+		};
+
+		draw();*/
+		</script>
+	</body>
+</html>

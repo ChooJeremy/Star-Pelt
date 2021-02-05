@@ -1,0 +1,1843 @@
+<!doctype html> 
+<html lang="en"> 
+<head> 
+	<meta charset="UTF-8" />
+	<title>Star Pelt</title>
+	<script src="../js/phaser.min.js"></script>
+
+	<script type="text/javascript" src="../_scripts/jquery2.0.2.min.js"></script>
+	<style type="text/css">
+		body {
+			margin: 0 auto;
+			width: 800px;
+		}
+		#url-entry {
+			position: fixed;
+			left: 50%;
+			/*Based off load from url button location*/
+			top: 57.142857142%;
+			margin-top: -25px;
+			margin-left: -300px;
+			width: 600px;
+			height: 50px;
+			font-size: 20px;
+			border: 0px solid black;
+			text-align: center;
+			display: none;
+		}
+		#url-entry:focus {
+			outline: none;
+		}
+	</style>
+</head>
+<body>
+	<!-- input box to display over type in url -->
+	<input id="url-entry" type="text" />
+	<!--<canvas id="canvas" width="1000" height="325" style="display: block;"></canvas>-->
+<script type="text/javascript">
+/*	// get the context from the canvas to draw on
+	var ctx = $("#canvas").get()[0].getContext("2d");
+
+	// create a gradient for the fill. Note the strange
+	// offset, since the gradient is calculated based on
+	// the canvas, not the specific element we draw
+	var gradient = ctx.createLinearGradient(0,0,0,300);
+	gradient.addColorStop(1,'#000000');
+	gradient.addColorStop(0.75,'#ff0000');
+	gradient.addColorStop(0.25,'#ffff00');
+	gradient.addColorStop(0,'#ffffff');
+*/
+var game = new Phaser.Game(800, 800, Phaser.AUTO, '', { preload: preload, create: create, update: update });
+
+SingleLine = function(game, x, y, index) {
+	Phaser.Sprite.call(this, game, x, y, 'line');
+
+	this.angle = index*90;
+	this.anchor.x = 0.5;
+	this.anchor.y = 0.5;
+	this.plannedXMovement = 0;
+	this.plannedYMovement = 0;
+	this.xMoveRemaining = 0;
+	this.yMoveRemaining = 0;
+	this.movementDelay = 0;
+	this.x -= Math.cos(game.math.degToRad(this.angle)) * distanceFromCenter;
+	this.y -= Math.sin(game.math.degToRad(this.angle)) * distanceFromCenter;
+
+	this.others = [];
+	this.myEvent = null;
+	this.activated = false;
+
+	game.add.existing(this);
+};
+
+SingleLine.prototype = Object.create(Phaser.Sprite.prototype);
+SingleLine.prototype.constructor = SingleLine;
+SingleLine.prototype.activate = function() {
+	this.loadTexture('line_select', 0, false);
+	if(this.myEvent !== null)
+	{
+		game.time.events.remove(this.myEvent);
+	}
+	//this.myEvent = game.time.events.add(1000, this.deactivate, this);
+	for(var i = 0; i < 3; i++)
+	{
+		this.others[i].deactivate();
+	}
+	this.activated = true;
+}
+SingleLine.prototype.deactivate = function() {
+	//game.time.events.remove(this.myEvent);
+	this.myEvent = null;
+	this.loadTexture('line', 0, false);
+	this.activated = false;
+}
+SingleLine.prototype.addOthers = function(o) {
+	this.others = o;
+}
+SingleLine.prototype.isActivated = function() {
+	return this.activated;
+}
+//Tells the line to move a certain distance AFTER 1 SECOND
+//the delay is required for star appearance to reflect the new location immediately.
+SingleLine.prototype.move = function(xDistance, yDistance) {
+	this.plannedXMovement = xDistance;
+	this.plannedYMovement = yDistance;
+	this.xMoveRemaining = xDistance;
+	this.yMoveRemaining = yDistance;
+	this.movementDelay = 1000;
+}
+SingleLine.prototype.update = function() {
+	if(this.movementDelay > 0)
+	{
+		this.movementDelay -= this.game.time.elapsedMS;
+	}
+	if(this.movementDelay <= 0)
+	{
+		if(this.xMoveRemaining !== 0)
+		{
+			var amountToMove = this.plannedXMovement * this.game.time.elapsedMS/1000;
+			if((amountToMove > 0 && amountToMove > this.xMoveRemaining) ||
+				(amountToMove < 0 && amountToMove < this.xMoveRemaining))
+			{
+				amountToMove = this.xMoveRemaining;
+				this.xMoveRemaining = 0;
+			}
+			else
+			{
+				this.xMoveRemaining -= amountToMove;
+			}
+			this.x += amountToMove;
+		}
+		if(this.yMoveRemaining !== 0)
+		{
+			var amountToMove = this.plannedYMovement * this.game.time.elapsedMS/1000;
+			if((amountToMove > 0 && amountToMove > this.yMoveRemaining) ||
+				(amountToMove < 0 && amountToMove < this.yMoveRemaining))
+			{
+				amountToMove = this.yMoveRemaining;
+				this.yMoveRemaining = 0;
+			}
+			else
+			{
+				this.yMoveRemaining -= amountToMove;
+			}
+			this.y += amountToMove;
+		}
+	}
+}
+//Calculates where this line's x location should be after typicalTime has passed.
+//Therefore, given that a star will be spawning now, by the time it _should_ be reaching
+//this line, where is this line's x location?
+SingleLine.prototype.finalX = function() {
+	//No movement planned
+	if(this.xMoveRemaining === 0)
+	{
+		return this.x;
+	}
+	else
+	{
+		var timeToConsider = typicalTime - this.movementDelay;
+		//This line won't have moved yet
+		if(timeToConsider < 0)
+		{
+			return this.x;
+		}
+		else
+		{
+			var amountToMove = this.plannedXMovement * timeToConsider/1000;
+			if((amountToMove > 0 && amountToMove > this.xMoveRemaining) ||
+				(amountToMove < 0 && amountToMove < this.xMoveRemaining))
+			{
+				amountToMove = this.xMoveRemaining;
+			}
+			return this.x + amountToMove;
+		}
+	}
+}
+//See finalX method
+SingleLine.prototype.finalY = function() {
+	if(this.yMoveRemaining === 0)
+	{
+		return this.y;
+	}
+	else
+	{
+		var timeToConsider = typicalTime - this.movementDelay;
+		if(timeToConsider < 0)
+		{
+			return this.y;
+		}
+		else
+		{
+			var amountToMove = this.plannedYMovement * timeToConsider/1000;
+			if((amountToMove > 0 && amountToMove > this.yMoveRemaining) ||
+				(amountToMove < 0 && amountToMove < this.yMoveRemaining))
+			{
+				amountToMove = this.yMoveRemaining;
+			}
+			return this.y + amountToMove;
+		}
+	}
+}
+
+StarPool = function(game) {
+	this.inactiveStars = [];
+	this.activeStars = [];
+	this.gameReference = game;
+};
+StarPool.prototype.constructor = StarPool;
+StarPool.prototype.getStars = function() {
+	//console.log("Get stars called");
+	if(this.inactiveStars.length > 0)
+	{
+		var returnValue = this.inactiveStars[0];
+		this.activeStars.push(returnValue);
+		this.inactiveStars.splice(0, 1);
+		return returnValue;
+	}
+	else
+	{
+		//console.log("Looking through active stars for an inactive star...");
+		for(var i = this.activeStars.length - 1; i > 0; i--)
+		{
+			if(this.activeStars[i].active === false)
+			{
+				this.inactiveStars.push(this.activeStars[i]);
+				this.activeStars.splice(i, 1);
+			}
+		}
+		if(this.inactiveStars.length > 0)
+		{
+			//console.log("Found an inactive star, returning...");
+			var returnValue = this.inactiveStars[0];
+			this.activeStars.push(returnValue);
+			this.inactiveStars.splice(0, 1);
+			return returnValue;
+		}
+		else
+		{
+			//console.log("None found, creating a new one and returning...");
+			var returnValue = new Star(this.gameReference);
+			this.activeStars.push(returnValue);
+			//physicsSystem.enable(returnValue);
+			return returnValue;
+		}
+	}
+}
+StarPool.prototype.updateAll = function() {
+	for(var i = 0; i < this.activeStars.length; i++)
+	{
+		this.activeStars[i].update();
+	}
+}
+StarPool.prototype.stopAll = function() {
+	for(var i = 0; i < this.activeStars.length; i++)
+	{
+		this.activeStars[i].active = false;
+		this.activeStars[i].visible = false;
+	}
+}
+StarPool.prototype.hasAciveStars = function() {
+	for(var i = 0; i < this.activeStars.length; i++)
+	{
+		if(this.activeStars[i].active) {return true;}
+	}
+	return false;
+}
+StarPool.prototype.killAll = function() {
+	for(var i = 0; i < this.activeStars.length; i++)
+	{
+		if(this.activeStars[i].active)
+		{
+			this.activeStars[i].kill();
+		}
+	}
+}
+
+Star = function(game) {
+	Phaser.Sprite.call(this, game, 0, 0, 'star');
+
+	this.active = false;
+	this.visible = false;
+	this.xvelocity = 0;
+	this.yvelocity = 0;
+	this.anchor.x = 0.5;
+	this.anchor.y = 0.5;
+	this.xLimit = 0;
+	this.yLimit = 0;
+	this.scoreGain = 1;
+	this.associatedPlayer = 0;
+
+	game.add.existing(this);
+};
+Star.prototype = Object.create(Phaser.Sprite.prototype);
+Star.prototype.constructor = Star;
+Star.prototype.init = function(x, y, xv, yv, players, isRed) {
+	this.active = true;
+	this.visible = true;
+	this.xvelocity = xv;
+	this.yvelocity = yv;
+	this.x = x;
+	this.y = y;
+
+	if(this.xvelocity > 0)
+	{
+		this.associatedPlayer = players[0];
+	}
+	else if(this.xvelocity < 0)
+	{
+		this.associatedPlayer = players[2];
+	}
+	else if(this.yvelocity > 0)
+	{
+		this.associatedPlayer = players[1];
+	}
+	else if(this.yvelocity < 0)
+	{
+		this.associatedPlayer = players[3];
+	}
+
+	if(isRed)
+	{
+		this.loadTexture('redstar', 0, false);
+		this.scoreGain = 2;
+	}
+	else
+	{
+		this.loadTexture('star', 0, false);
+		this.scoreGain = 1;
+	}
+
+	//console.log("Star init called and completed");
+}
+Star.prototype.update = function() {
+	if(this.active)
+	{
+		this.x += this.xvelocity * game.time.elapsedMS;
+		this.y += this.yvelocity * game.time.elapsedMS;
+
+		if(this.checkForCollision())
+		{
+			//autoplay code
+			//this.associatedPlayer.activate();
+		}
+		
+		if(this.associatedPlayer.isActivated() && this.checkForCollision())
+		{
+			//Score!
+			this.visible = false;
+			this.active = false;
+			//Check if movement planned
+			if(scoreIntervals.length > 0 && 
+				(scoreIntervals[0] === (score + 1) || scoreIntervals[0] === (score + this.scoreGain)))
+			{
+				plannedMovements[0]();
+				scoreIntervals.splice(0, 1);
+				plannedMovements.splice(0, 1);
+			}
+
+			score = score + this.scoreGain;
+			combo++;
+			if(maxCombo < combo)
+			{
+				maxCombo = combo;
+			}
+			emitter.x = this.x;
+			emitter.y = this.y;
+			var particlesToCreate = Math.floor(Math.random() * 6) + 6;
+			emitter.start(true, 500, null, particlesToCreate);
+			if(starSpawnsMerged.length == 0)
+			{
+				playRandomHitSound();
+			}
+
+
+			if(songOver)
+			{
+				if(!starPool.hasAciveStars())
+				{
+					lives = 0;
+					gameOver();
+				}
+			}
+		}
+		else if(this.checkForFailure())
+		{
+			//Fail
+			this.active = false;
+			this.visible = false;
+
+			if(currentlyImmune > 0)
+			{
+				//new XIcon(this.game, this.x, this.y, true);
+				//WAAY too large
+			}
+			else
+			{
+				new XIcon(this.game, this.x, this.y, false);
+				combo = 0;
+				lives--;
+				playRandomMissSound();
+				currentlyImmune = 500;
+				if(lives == 0)
+				{
+					gameOver();
+				}
+			}
+
+			if(lives > 0 && songOver && !starPool.hasAciveStars())
+			{
+				lives = 0;
+				gameOver();
+			}
+		}
+	}
+}
+Star.prototype.checkForCollision = function() {
+	if(this.active)
+	{
+		//Left player
+		if(this.xvelocity > 0 && this.associatedPlayer.x < this.x + 20)
+		{
+			return true;
+		}
+		//Right player
+		else if(this.xvelocity < 0 && this.associatedPlayer.x > this.x - 20)
+		{
+			return true;
+		}
+		//top player
+		else if(this.yvelocity > 0 && this.associatedPlayer.y < this.y + 20)
+		{
+			return true;
+		}
+		//Bottom player
+		else if(this.yvelocity < 0 && this.associatedPlayer.y > this.y - 20)
+		{
+			return true;
+		}
+		return false;
+	}
+}
+Star.prototype.checkForFailure = function() {
+	if(this.active)
+	{
+		//Left player
+		if(this.xvelocity > 0 && this.associatedPlayer.x + 20 < this.x)
+		{
+			return true;
+		}
+		//Right player
+		else if(this.xvelocity < 0 && this.associatedPlayer.x - 20 > this.x)
+		{
+			return true;
+		}
+		//top player
+		else if(this.yvelocity > 0 && this.associatedPlayer.y + 20 < this.y)
+		{
+			return true;
+		}
+		//Bottom player
+		else if(this.yvelocity < 0 && this.associatedPlayer.y - 20 > this.y)
+		{
+			return true;
+		}
+		return false;
+	}
+}
+Star.prototype.kill = function() {
+	this.active = false;
+	this.visible = false;
+
+	emitter.x = this.x;
+	emitter.y = this.y;
+	var particlesToCreate = Math.floor(Math.random() * 6) + 6;
+	emitter.start(true, 500, null, particlesToCreate);
+}
+
+XIcon = function(game, x, y, immuneInstead) {
+	if(!immuneInstead)
+	{
+		Phaser.Sprite.call(this, game, x, y, 'xIcon');
+	}
+	else
+	{
+		Phaser.Sprite.call(this, game, x, y, 'immune');
+	}
+
+	//I want the X to move 30pixels up in the course of 0.1s
+	this.amountLeftToMove = -30;
+	this.timeGiven = 100;
+	this.timer = 2000;
+	this.anchor.x = 0.5;
+	this.anchor.y = 0.5;
+
+	game.add.existing(this);
+};
+XIcon.prototype = Object.create(Phaser.Sprite.prototype);
+XIcon.prototype.constructor = XIcon;
+XIcon.prototype.update = function() {
+	var amountToMove = -30 * game.time.elapsedMS/this.timeGiven;
+	if(this.amountLeftToMove > amountToMove)
+	{
+		amountToMove = this.amountLeftToMove;
+	}
+	this.amountLeftToMove -= amountToMove;
+	this.y += amountToMove;
+
+	this.timer -= game.time.elapsedMS;
+	if(this.timer <= 0)
+	{
+		this.destroy();
+	}
+}
+
+FlashingArrow = function(game, x, y, index) {
+	Phaser.Sprite.call(this, game, x, y, 'tutorial_arrow');
+
+	this.angle = index*90;
+	this.anchor.x = 0.5;
+	this.anchor.y = 0.5;
+	this.x -= Math.cos(game.math.degToRad(this.angle)) * (distanceFromCenter + 60);
+	this.y -= Math.sin(game.math.degToRad(this.angle)) * (distanceFromCenter + 60);
+	this.changeDirection = -1;
+	this.minAlpha = 0.5;
+
+	game.add.existing(this);
+};
+
+FlashingArrow.prototype = Object.create(Phaser.Sprite.prototype);
+FlashingArrow.prototype.constructor = FlashingArrow;
+FlashingArrow.prototype.update = function() {
+	if(this.visible)
+	{
+		this.alpha += this.changeDirection*0.001*this.game.time.elapsedMS;
+
+		if(this.alpha >= 1)
+		{
+			this.changeDirection = -1;
+			this.alpha = 1;
+		}
+		else if(this.alpha <= this.minAlpha)
+		{
+			this.changeDirection = 1;
+			this.alpha = this.minAlpha;
+		}
+	}
+	this.visible = showTutorial;
+}
+
+LabelButton = function(game, x, y, text, onPress) {
+	Phaser.Button.call(this, game, x, y, 'button', onPress);
+
+	this.anchor.x = 0.5;
+	this.anchor.y = 0.5;
+	this.label = new Phaser.Text(game, this.x, this.y, text, {'font': '30px Arial', 'fill': 'black'});
+	this.label.anchor.x = 0.5;
+	this.label.anchor.y = 0.5;
+	game.add.existing(this);
+	game.add.existing(this.label);
+}
+
+LabelButton.prototype = Object.create(Phaser.Button.prototype);
+LabelButton.prototype.constructor = LabelButton;
+LabelButton.prototype.hide = function() {
+	this.visible = false;
+	this.label.visible = false;
+}
+LabelButton.prototype.show = function() {
+	this.visible = true;
+	this.label.visible = true;
+}
+LabelButton.prototype.destroy = function() {
+	this.label.destroy();
+	Phaser.Button.prototype.destroy.call(this);
+}
+
+MusicButton = function(game, x, y, text, url, beforeLoad, loadComplete) {
+	LabelButton.call(this, game, x, y, text, this.onPress);
+
+	this.beforeLoad = beforeLoad;
+	this.originalText = text;
+	this.loadComplete = loadComplete;
+	this.url = url;
+}
+
+MusicButton.prototype = Object.create(LabelButton.prototype);
+MusicButton.prototype.constructor = MusicButton;
+MusicButton.prototype.onPress = function() {
+	dropTextBox = undefined;
+	if(this.beforeLoad === undefined || this.beforeLoad.call(this))
+	{
+		this.loadMusic(this.url);
+	}
+}
+MusicButton.prototype.loadMusic = function(url) {
+	hideOtherMusic(this);
+	this.label.text = "Loading music";
+	loadMusic(url, function() {
+		this.label.text = "Analyzing Music";
+		analyzeMusicAsync();
+		//Wait for 5 seconds and then continue to allow some analyze to happen early first.
+		var _this = this;
+		setTimeout(function() {
+			_this.label.text = "Done!";
+			if(_this.loadComplete !== undefined)
+			{
+				_this.loadComplete.call(_this);
+			}
+			_this.label.text = _this.originalText;
+			reset();
+		},  analyzingTimeDelay);
+	}, function(audiodata){
+		this.label.text = "Decoding Music";
+		return true;
+	}, this);
+}
+
+HighScore = function() {
+	this.bestCombo = 0;
+	this.scores = [];
+}
+
+HighScore.prototype = new Object();
+HighScore.prototype.constructor = HighScore;
+HighScore.prototype.toString = function() {
+	var saveData = this.bestCombo + ",";
+	for(var i = 0; i < this.scores.length; i++)
+	{
+		saveData += this.scores[i] + ",";
+	}
+	return saveData;
+}
+HighScore.prototype.loadFromString = function(saveData) {
+	if(saveData === null) {return false;}
+	var result = saveData.split(',');
+	this.bestCombo = parseInt(result[0]);
+	this.scores = [];
+	for(var i = 1; i < result.length - 1 && this.scores.length < 10; i++)
+	{
+		this.scores.push(result[i]);
+	}
+	return true;
+}
+HighScore.prototype.addScore = function(score) {
+	for(var i = 0; i < this.scores.length; i++)
+	{
+		if(score > this.scores[i])
+		{
+			if(this.scores.length < 10)
+			{
+				this.scores.splice(i, 0, score);
+				return true;
+			}
+			else
+			{
+				this.scores.splice(i, 1, score);
+				return true;
+			}
+		}
+	}
+	if(this.scores.length < 10)
+	{
+		this.scores.push(score);
+		return true;
+	}
+	return false;
+}
+HighScore.prototype.newBestCombo = function(combo) {
+	if(this.bestCombo < combo)
+	{
+		this.bestCombo = combo;
+		return true;
+	}
+	return false;
+}
+
+function preload() {
+	game.scale.scaleMode = Phaser.ScaleManager.SHOW_ALL;
+
+	game.load.image('line', 'images/line.png')
+	game.load.image('line_select', 'images/line_selected.png');
+	game.load.image('star', 'images/star.png');
+	game.load.image('redstar', 'images/redstar.png');
+	game.load.image('xIcon', 'images/x.png');
+	game.load.image('particle', 'images/particle.png');
+	game.load.image('immune', 'images/immune.png');
+	game.load.image('tutorial_arrow', 'images/arrow.png');
+	game.load.image('restart', 'images/restart.png');
+	game.load.image('button', 'images/button.png');
+
+	for(var i = 1; i < 8; i++)
+	{
+		game.load.audio('piano_' + i, 'sounds/Major_' + i + '.wav');
+	}
+	for(var i = 1; i < 6; i++)
+	{
+		game.load.audio('piano_low_' + i, 'sounds/piano_low_' + i + '.wav');
+	}
+}
+
+//The game
+var players;
+var distanceFromCenter = 60;
+var highScore;
+//var upKey, downKey, leftKey, rightKey;
+var arrowPress;
+var starPool;
+var myTimer, nextBallAppearanceTime;
+//var physicsSystem;
+var started = false;
+var currentlyImmune = 0;
+var showTutorial = true;
+var typicalTime; //Typical time taken for a star to reach the line, in milliseconds
+var scoreIntervals = [], plannedMovements = [];
+var restartSprite = null, backToMenu = null;
+var continueBtn;
+
+//Making it look nice
+var emitter;
+var score = 0, combo = 0, lives = 3, maxCombo = 0;
+var scoreText;
+var highScoreText;
+
+//Sounds
+var hitSounds = [];
+var missSounds = [];
+var playedSounds = [];
+var playedSoundsCap = 10;
+
+//Menu
+var menuButtons = [];
+var textBoxText;
+var activeTextBox;
+var dropTextBox;
+
+//Audio times
+var audioCtx, source, playingSource, audioPlaying;
+var starSpawnsRed = [], starSpawnsMerged = [], audioCounter = 0, freeTime = 0;
+//Originally had a starSpawnsNormal, but not required since if star isn't red = star is normal
+var songStartTime;
+var musicButtons = [];
+var lastSpawnedSide; //Stars spawned close to each other (<=100ms) during music should spawn on the same side
+var cancelAudio = false; //True if the user pressed the back button after loading music. Causes the finishing decode audio call to be ignroed.
+var songOver = false;
+
+//Audio analysis
+var scriptProcessor;
+var analyser;
+var analyzeAudioCtx;
+var analyzeSource;
+var lastKnownArrayAnalysisData;
+var musicPlayingStartingTime;
+//Required minimum increased in the byteFrequencyData for a frequency to be considered as a beat
+var requriredMinimumIncrease = 10;
+//Required minimum % of frequency levels to hit that minimum incrase for that point in the song to be a beat
+//From 0 to 1
+var requiredPercentagePass = 0.6;
+var requiredPercentagePassForRed = 0.8;
+//Only checks frequency levels of the section defined below, ignoring other frequencies.
+var minimumFrequencyCheck = 100, maximumFrequencyCheck = 280;
+var analyzingTimeDelay = 10000;
+var totalSongLength = 0;
+var analysisText;
+
+function create() {
+	game.stage.backgroundColor = "#ffffff";
+	game.stage.disableVisibilityChange = true;
+	starPool = new StarPool(game);
+	//Make fps work, otherwise game will not bother
+	game.time.advancedTiming = true;
+	//physicsSystem = new Phaser.Physics.Arcade(game);
+	emitter = game.add.emitter(0, 0, 200);
+	emitter.makeParticles('particle');
+	emitter.gravity = 200;
+
+	//var typicalDistance = game.width/2 - 60;
+	//typicalTime = typicalDistance/0.5; //In milliseconds, moving 0.5px per millisecond
+	typicalTime = 680; //Magic number based on above values on my browser.
+
+	for(var i = 1; i < 8; i++)
+	{
+		hitSounds.push(game.add.audio('piano_' + i));
+	}
+	for(var i = 1; i < 6; i++)
+	{
+		missSounds.push(game.add.audio('piano_low_' + i));
+	}
+	//Once all sounds are successfully loaded and decoded, call display menu
+	game.sound.setDecodedCallback(hitSounds.concat(missSounds), displayMenu, this);
+
+	//Music handling
+	audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+	source = audioCtx.createBufferSource();
+
+	analyzeAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+	//analyzeSource = analyzeAudioCtx.createBufferSource();
+
+	//Setup a javascript node
+	scriptProcessor = analyzeAudioCtx.createScriptProcessor(2048, 1, 1);
+	scriptProcessor.connect(analyzeAudioCtx.destination);
+
+	analyser = analyzeAudioCtx.createAnalyser();
+	analyser.smoothingTimeConstant = 0.3;
+
+	//source.connect(analyser);
+	analyser.connect(scriptProcessor);
+
+	scriptProcessor.onaudioprocess = function() {
+		// get the average for the first channel
+		var array =  new Uint8Array(analyser.frequencyBinCount);
+		analyser.getByteFrequencyData(array);
+
+		if(lastKnownArrayAnalysisData === undefined)
+		{
+			//Prefill array with 0 with preset original size.
+			lastKnownArrayAnalysisData = Array.apply(null, Array(array.length)).map(Number.prototype.valueOf,0);
+		}
+
+		//If first few bytes are all 0, consider useless and dump
+		var useless = true;
+		for(var i = 0; i < 5; i++)
+		{
+			if(array[i] != 0)
+			{
+				useless = false;
+				break;
+			}
+		}
+		if(useless)
+		{
+			return;
+		}
+
+		//console.log("Non useless script processor call detected");
+		//console.log(lastKnownArrayAnalysisData);
+		//console.log(array);
+		//debugger;
+		
+		/*// clear the current state
+		ctx.clearRect(0, 0, 1000, 325);
+
+		// set the fill style
+		ctx.fillStyle=gradient;
+		
+		for ( var i = 0; i < (array.length); i++ ){
+			var value = array[i];
+
+			ctx.fillRect(i*5,325-value,3,325);
+			console.log([i,value])
+		}
+		//console.log(array.length);*/
+
+		//SUPER COMPLEX ANALYZE CODE???
+		var totalAmounts = maximumFrequencyCheck - minimumFrequencyCheck;
+		var totalPasses = 0;
+		for(var i = minimumFrequencyCheck; i < (array.length) && i < maximumFrequencyCheck; i++) {
+			var value = array[i];
+
+			if(lastKnownArrayAnalysisData[i] < value)
+			{
+				if(value - lastKnownArrayAnalysisData[i] > requriredMinimumIncrease)
+				{
+					totalPasses++;
+				}
+			}
+		}
+		//console.log(totalPasses + "/" + totalAmounts + " - " + (totalPasses*100/totalAmounts) + "% passing rate");
+		if(totalPasses >= totalAmounts * requiredPercentagePass)
+		{
+			//Mark this as a beat
+			var timeToHit = Date.now() - musicPlayingStartingTime - typicalTime;
+			//console.log("Time to hit: " + timeToHit);
+			if(timeToHit > 0)
+			{
+				if(totalPasses >= totalAmounts * requiredPercentagePassForRed)
+				{
+					starSpawnsRed.push(timeToHit);
+				}
+				starSpawnsMerged.push(timeToHit);
+			}
+		}
+
+		lastKnownArrayAnalysisData = array;
+		if(totalSongLength > 0)
+		{
+			analysisText.text = ((Date.now() - musicPlayingStartingTime)*100 / totalSongLength).toFixed(2) + "%";
+		}
+	};
+
+	if(minimumFrequencyCheck < 0)
+	{
+		minimumFrequencyCheck = 0;
+	}
+
+	//Below line doesn't work. TypeError: a.setStageReference is not a function
+	//scoreText = new Text(game, 0, 0, 'Default text', {font: '65px Arial', fill: '#000'});
+	//game.add.existing(scoreText);
+	scoreText = game.add.text(16, 16, 'score: 0', { fontSize: '20px', fill: '#000' });
+	analysisText = game.add.text(game.width - 100, 16, 'analysis', {fontSize: '20px', fill: '#000'});
+	highScoreText = game.add.text(game.width/2, 40, '', {fontSize: '35px', fill: '#000'});
+	highScoreText.align = "center";
+	highScoreText.anchor.x = 0.5;
+
+	highScore = new HighScore();
+	highScore.loadFromString(localStorage.getItem('highscore'));
+
+	players = [];
+
+	for(var i = 0; i < 4; i++)
+	{       
+		players.push(new SingleLine(game, game.width/2, game.height/2, i));
+		new FlashingArrow(game, game.width/2, game.height/2, i);
+	}
+
+	for(var i = 0; i < 4; i++)
+	{
+		var otherPlayers = [];
+		for(var j = 0; j < 4; j++)
+		{
+			if(j !== i)
+			{
+				otherPlayers.push(players[j]);
+			}
+		}
+		players[i].addOthers(otherPlayers);
+	}
+	//physicsSystem.enable(players);
+
+	var keysToBind = [Phaser.KeyCode.UP, Phaser.KeyCode.DOWN, Phaser.KeyCode.LEFT, Phaser.KeyCode.RIGHT, Phaser.KeyCode.W, Phaser.KeyCode.A, Phaser.KeyCode.S, Phaser.KeyCode.D, Phaser.KeyCode.I, Phaser.KeyCode.J, Phaser.KeyCode.K, Phaser.KeyCode.L, Phaser.KeyCode.R, Phaser.KeyCode.ESC];
+
+	for(var i = 0; i < keysToBind.length; i++)
+	{
+		var thisKey = game.input.keyboard.addKey(keysToBind[i]);
+		thisKey.onDown.add(arrowPress, this);
+	}
+
+	//game.input.keyboard.addCallbacks(this, null, playerType, null);
+/*
+	upKey = game.input.keyboard.addKey(Phaser.KeyCode.UP);
+	upKey.onDown.add(arrowPress, this);
+	downKey = game.input.keyboard.addKey(Phaser.KeyCode.DOWN);
+	downKey.onDown.add(arrowPress, this);
+	leftKey = game.input.keyboard.addKey(Phaser.KeyCode.LEFT);
+	leftKey.onDown.add(arrowPress, this);
+	rightKey = game.input.keyboard.addKey(Phaser.KeyCode.RIGHT);
+	rightKey.onDown.add(arrowPress, this);*/
+
+	/*loadMusic('sounds/dejavu.mp3', function() {
+		getPeaks(0.05);
+		reset();
+	});*/
+
+	menuButtons.push(new LabelButton(game, game.width/2, game.height/5, "Play Original", reset));
+	menuButtons.push(new LabelButton(game, game.width/2, game.height*2/5, "Play with Music", displayMusicMenu));
+	menuButtons.push(new LabelButton(game, game.width/2, game.height*3/5, "Local High scores", showHighScores));
+	menuButtons.push(new LabelButton(game, game.width/2, game.height*4/5, "Options"));
+
+	musicButtons.push(new MusicButton(game, game.width/2, game.height/7, "Deja Vu", "sounds/dejavu.mp3"));
+	musicButtons.push(new MusicButton(game, game.width/2, game.height*2/7, "You have to\nburn the rope", "sounds/burnrope.mp3"));
+	musicButtons.push(new MusicButton(game, game.width/2, game.height*3/7, "I'll Quit LoL", "sounds/quitlol.mp3"));
+	musicButtons.push(new MusicButton(game, game.width/2, game.height*4/7, "Load from URL", "", function() {
+		this.scale.x = 3;
+		//activeTextBox = this;
+		this.label.text = "";
+		document.getElementById("url-entry").style.display = "block";
+		document.getElementById("url-entry").focus();
+		if(document.getElementById("url-entry").value === "")
+		{
+			document.getElementById("url-entry").value = location.protocol + "//";
+		}
+		game.input.keyboard.enabled = false;
+		//Hide everything else, show instructions
+		for(var i = 0; i < musicButtons.length; i++)
+		{
+			musicButtons[i].hide();
+		}
+		//But show this
+		this.show();
+		//And the back button
+		musicButtons[musicButtons.length - 1].show();
+		//Also display a continue button
+		continueBtn = new LabelButton(game, this.x, game.height*5/7, "Continue", function() {
+			game.input.keyboard.enabled = true;
+			highScoreText.text = "";
+			document.getElementById("url-entry").style.display = "none";
+			musicButtons[3].loadMusic(document.getElementById("url-entry").value);
+			this.destroy();
+		});
+		//Let's just re-use high scores for instructions
+		highScoreText.text = "\n\nEnter in a URL linking to an mp3 file.\nYouTube URLs will not work\n(Try converting it to mp3 first)\nURL must use the same protocol as this page.";
+		return false;
+	}, function() {
+		//On click, after load music
+		activeTextBox = undefined;
+		this.scale.x = 1;
+	}));
+	musicButtons.push(new MusicButton(game, game.width/2, game.height*5/7, "Load from\nlocal storage", "", function() {
+		this.scale.x = 2;
+		this.label.text = "Drag and drop your music file here."
+		dropTextBox = this;
+		return false;
+	}, function() {
+		this.scale.x = 1;
+		dropTextBox = undefined;
+	}));
+	musicButtons.push(new LabelButton(game, game.width/2, game.height*6/7, "Back", displayMenu));
+	//So that original text is a valid variable in all instances in the array musicButtons.
+	musicButtons[musicButtons.length - 1].originalText = "Back";
+
+	//Add the drop event to the canvas for the local music upload
+	game.canvas.addEventListener("drop", function(e) {
+		console.log("Drop detected");
+		if(dropTextBox !== undefined)
+		{
+			e.stopPropagation();
+			e.preventDefault();
+
+			if(e.dataTransfer.files.length)
+			{
+				//File is e.dataTransfer.files[0]
+				var reader = new FileReader();
+				dropTextBox.label.text = "Loading Music...";
+				reader.addEventListener('load', function(e) {
+					if(dropTextBox === undefined)
+					{
+						dropTextBox.label.text = dropTextBox.originalText;
+						return;
+					}
+					dropTextBox.label.text = "Decoding music...";
+					decodeMusic(e.target.result, function() {
+						if(dropTextBox === undefined)
+						{
+							dropTextBox.label.text = dropTextBox.originalText;
+							return;
+						}
+						dropTextBox.label.text = "Analyzing music...";
+						analyzeMusicAsync();
+						setTimeout(function() {
+							if(dropTextBox === undefined)
+							{
+								dropTextBox.label.text = dropTextBox.originalText;
+								return;
+							}
+							dropTextBox.label.text = dropTextBox.originalText;
+							reset();
+						}, analyzingTimeDelay);
+					}, this);
+				});
+				reader.addEventListener('error', function() {
+					dropTextBox.label.text = "Error reading file.";
+				});
+				reader.readAsArrayBuffer(e.dataTransfer.files[0]);
+			}
+			else
+			{
+				//Not a file
+			}
+		}
+	});
+	
+	//Need to override dragover else will navigate away: https://stackoverflow.com/questions/6756583/prevent-browser-from-loading-a-drag-and-dropped-file
+	game.canvas.addEventListener("dragover", function(e) {
+		e = e || event;
+		e.preventDefault();
+	});
+}
+
+function displayMenu() {
+	started = false;
+	showTutorial = false;
+	game.input.keyboard.enabled = true;
+	document.getElementById("url-entry").style.display = "none";
+	if(continueBtn !== undefined)
+	{
+		continueBtn.destroy();
+		continueBtn = undefined;
+	}
+
+	starSpawnsMerged = [];
+	starSpawnsRed = [];
+	audioCounter = 0;
+	freeTime = 0;
+	cancelAudio = true;
+	activeTextBox = undefined;
+	dropTextBox =undefined;
+	textBoxText ="";
+	highScoreText.text = "";
+
+	cancelMusicAnalysis();
+
+	if(restartSprite !== null)
+	{
+		restartSprite.destroy();
+		restartSprite = null;
+	}
+	for(var i = 0; i < players.length; i++)
+	{
+		players[i].visible = false;
+	}
+
+	for(var i = 0; i < menuButtons.length; i++)
+	{
+		menuButtons[i].show();
+	}
+
+	for(var i = 0; i < musicButtons.length; i++)
+	{
+		musicButtons[i].hide();
+		musicButtons[i].scale.x = 1;
+		musicButtons[i].label.text = musicButtons[i].originalText;
+	}
+}
+
+function displayMusicMenu() {
+	for(var i =0; i < menuButtons.length; i++)
+	{
+		menuButtons[i].hide();
+	}
+	for(var i = 0; i < musicButtons.length; i++)
+	{
+		musicButtons[i].show();
+	}
+}
+
+function hideOtherMusic(exceptMe) {
+	for(var i = 0; i < musicButtons.length - 1; i++)//Last item is back button, don't hide
+	{
+		if(musicButtons[i] !== exceptMe)
+		{
+			musicButtons[i].hide();
+		}
+	}
+}
+/*
+function playerType(data)
+{
+	if(activeTextBox !== undefined)
+	{
+		switch(data.keyCode)
+		{
+			case Phaser.KeyCode.BACKSPACE:
+				textBoxText = textBoxText.substring(0, this.textBoxText.length - 1);
+				break;
+			case Phaser.KeyCode.ENTER:
+				activeTextBox.loadMusic(textBoxText);
+				break;
+			default:
+				var character = String.fromCharCode(data.keyCode).toString().toLowerCase();
+				textBoxText += character;
+				break;
+		}
+		activeTextBox.label.text = textBoxText;
+		activeTextBox.url = textBoxText;
+	}
+}*/
+
+function showHighScores() {
+	for(var i =0; i < menuButtons.length; i++)
+	{
+		menuButtons[i].hide();
+	}
+	var backButton = new LabelButton(game, game.width/2, game.height*6/7, "Back", function() {
+		displayMenu();
+		this.destroy();
+	});
+	var resultText = "Best combo: " + highScore.bestCombo + "\nHighScores:\n";
+	for(var i = 0; i < highScore.scores.length; i++)
+	{
+		resultText += highScore.scores[i] + "\n";
+	}
+	highScoreText.text = resultText;
+}
+
+function ready() {
+	started = true;
+}
+
+function update() {
+	if(started) {
+		myTimer -= game.time.elapsedMS;
+		nextBallAppearanceTime -= game.time.elapsedMS;
+		if(freeTime > 0)
+		{
+			freeTime -= game.time.elapsedMS;
+		}
+		if(currentlyImmune > 0)
+		{
+			currentlyImmune -= game.time.elapsedMS;
+		}
+		else
+		{
+			currentlyImmune = 0;
+		}
+	}
+	if(nextBallAppearanceTime <= 0 && lives > 0 && !songOver)
+	{
+		if(freeTime > 0)
+		{
+			//Don't spawn yet
+			myTimer = (starSpawnsMerged[audioCounter] - starSpawnsMerged[audioCounter - 1]);
+			nextBallAppearanceTime = myTimer;
+			audioCounter++;
+		}
+		else
+		{
+
+			if(starSpawnsMerged.length > 0 && audioCounter == starSpawnsMerged.length)
+			{
+				//End of game, folks!
+				//Lives check to prevent this occuring at the end after the player has lost, creating multiple restart buttons and back to menu buttons
+				songOver = true;
+			}
+
+			showTutorial = false;
+		
+			var newStar = starPool.getStars();
+			var xVelocity = 0;
+			var yvelocity = 0;
+			var spawnX = game.width/2;
+			var spawnY = game.height/2;
+			var randomNumber;
+
+			if(starSpawnsMerged.length === 0 || lastSpawnedSide === undefined)
+			{
+				randomNumber = Math.floor(Math.random() * 4);
+				lastSpawnedSide = randomNumber;
+			}
+			else
+			{
+				randomNumber = lastSpawnedSide;
+			}
+			if(randomNumber == 0)
+			{
+				//Coming from left
+				xVelocity = calculateRequiredSpeed(players[0].x - 20, myTimer - nextBallAppearanceTime);
+				spawnX = 0;
+				spawnY = players[0].finalY();
+			}
+			else if(randomNumber == 1)
+			{
+				//Coming from top
+				yvelocity = calculateRequiredSpeed(players[1].y - 20, myTimer - nextBallAppearanceTime);
+				spawnX = players[1].finalX();
+				spawnY = 0;
+			}
+			else if(randomNumber == 2)
+			{
+				//Coming from right
+				xVelocity = calculateRequiredSpeed(game.width - players[2].x + 20, myTimer - nextBallAppearanceTime) * -1;
+				spawnX = game.width;
+				spawnY = players[2].finalY();
+			}
+			else
+			{
+				//Coming from bottom
+				yvelocity = calculateRequiredSpeed(game.height - players[3].y + 20, myTimer - nextBallAppearanceTime) * -1;
+				spawnX = players[3].finalX();
+				spawnY = game.height;
+			}
+
+			if(starSpawnsMerged.length  == 0)
+			{
+				//Calculate whether to spawn a new star or not, based on combo
+				var redStarSpawnChance = Math.pow(combo, 2) / 900;
+				//Chance increases exponentially from 0% at combo 0 to 100% at combo 400.
+
+				newStar.init(spawnX, spawnY, xVelocity, yvelocity, players, Math.random() * 100 < redStarSpawnChance);
+			}
+			else
+			{
+				newStar.init(spawnX, spawnY, xVelocity, yvelocity, players, starSpawnsRed.indexOf(starSpawnsMerged[audioCounter - 1]) !== -1)
+			}
+
+			if(starSpawnsMerged.length > 0)
+			{
+				if(audioCounter < starSpawnsMerged.length)
+				{
+					//If a song is playing, sometimes the analysis and the playing song notes go out of sync when using separate timers.
+					//As such, a correction is done from Date.now() to songStartTime for myTimer.
+					var timeTillNextNote = starSpawnsMerged[audioCounter] - (Date.now() - songStartTime);
+					myTimer = timeTillNextNote;
+					audioCounter++;
+					if(timeTillNextNote > 225)
+					{
+						lastSpawnedSide = undefined;
+					}
+				}
+			}
+			else
+			{
+				myTimer += randomNextTimerIncrease();
+			}
+
+			if(score < 300)
+			{
+				nextBallAppearanceTime = myTimer;
+			}
+			else
+			{
+				//From 300 to 600, increase the variation in possible speed
+				var possibleChange = (Math.random() * Math.min(150, (score - 300)/2)) - Math.min(75, (score - 300)/4);
+				nextBallAppearanceTime = myTimer + possibleChange;
+			}
+		}
+	}
+
+	scoreText.text = "Score: " + score + "\nCombo: " + combo + "\nHighest Combo: " + maxCombo + "\nLives: " + lives + "\nFPS: " + game.time.fps + "\nstarSpawnsMerged: " + audioCounter + "/" + starSpawnsMerged.length + "\nMyTimer: " + myTimer + "\nNextBallAppearanceTime: " + nextBallAppearanceTime + "\nPrevious/Next/Delta: " + starSpawnsMerged[audioCounter] + " " + starSpawnsMerged[audioCounter+1] + " " + (starSpawnsMerged[audioCounter+1] - starSpawnsMerged[audioCounter] + "\nNext Movement at: " + scoreIntervals[0]);
+
+	//Check for movement above score 1100
+	if(scoreIntervals.length === 0)
+	{
+		scoreIntervals.push(Math.floor(Math.random() * 100) + score + 1);
+		plannedMovements.push(movePlayerRandom);
+	}
+}
+
+var arrowPress = function(key) {
+	switch(key.keyCode)
+	{
+		case Phaser.KeyCode.UP:
+		case Phaser.KeyCode.W:
+		case Phaser.KeyCode.I:
+			players[1].activate();
+			break;
+		case Phaser.KeyCode.DOWN:
+		case Phaser.KeyCode.S:
+		case Phaser.KeyCode.K:
+			players[3].activate();
+			break;
+		case Phaser.KeyCode.LEFT:
+		case Phaser.KeyCode.A:
+		case Phaser.KeyCode.J:
+			players[0].activate();
+			break;
+		case Phaser.KeyCode.RIGHT:
+		case Phaser.KeyCode.D:
+		case Phaser.KeyCode.L:
+			players[2].activate();
+			break;
+		case Phaser.KeyCode.R:
+			if(started)
+			{
+				reset();
+			}
+			break;
+		case Phaser.KeyCode.ESC:
+			//Lives check to prevent multiple presses of ESC creating multiple restart buttons and back to menu buttons
+			if(started && lives > 0)
+			{
+				lives = 0;
+				gameOver();
+			}
+			break;
+	}
+}
+
+function playRandomHitSound() {
+	//http://dmitri.mycpanel.princeton.edu/whatmakesmusicsoundgood.html
+	if(playedSounds.length == 0)
+	{
+		var randomInt = Math.floor(Math.random() * hitSounds.length);
+		hitSounds[randomInt].play();
+		playedSounds.push(randomInt);
+	}
+	else
+	{
+		//Try to do efficient voice leading.
+		var lastPlayedSound = playedSounds[playedSounds.length - 1];
+		var randomInt = Math.random();
+		//Lower bound
+		if(lastPlayedSound == 0)
+		{
+			if(randomInt < 0.5 && false)
+			{
+				hitSounds[0].play();
+				playedSounds.push(0);
+			}
+			else
+			{
+				hitSounds[1].play();
+				playedSounds.push(1);
+			}
+		}
+		//Upper bound
+		else if(lastPlayedSound == hitSounds.length - 1)
+		{
+			if(randomInt < 0.5 && false)
+			{
+				hitSounds[lastPlayedSound].play();
+				playedSounds.push(lastPlayedSound);
+			}
+			else
+			{
+				hitSounds[lastPlayedSound - 1].play();
+				playedSounds.push(lastPlayedSound - 1);
+			}
+		}
+		//Random
+		else
+		{
+			if(randomInt < (1/2))
+			{
+				hitSounds[lastPlayedSound - 1].play();
+				playedSounds.push(lastPlayedSound - 1);
+			}
+			else if(randomInt < (2/3) && false)
+			{
+				hitSounds[lastPlayedSound].play();
+				playedSounds.push(lastPlayedSound);
+			}
+			else
+			{
+				hitSounds[lastPlayedSound + 1].play();
+				playedSounds.push(lastPlayedSound + 1);
+			}
+		}
+	}
+
+	if(playedSounds.length > playedSoundsCap)
+	{
+		playedSounds.shift();
+	}
+}
+
+function playRandomMissSound() {
+	var randomInt = Math.floor(Math.random() * missSounds.length);
+	missSounds[randomInt].play();
+}
+
+//Returns how much the game should wait (in milliseconds) until the next star spawns.
+//Influence - Optional - A positive influence will increase the changes of the return value being higher, while
+//a negative influence will increase the changes ofthe return value being lower. The further the value is away
+//from 0, thie higher the chance.
+function randomNextTimerIncrease(influence) {
+	if(influence === undefined) {
+		influence = 0;
+	}
+	//Blocking it off in case it gets too far off
+	if(influence > 1000 && Math.random() > 0.3)
+	{
+		return 1000;
+	}
+	else if(influence < -1000 && Math.random() > 0.3)
+	{
+		return 0;
+	}
+
+	var probabilityForRandomDuration = (Math.min(40, Math.max(0, score - 10)))* (1/40);
+	var probabilityForSmallDuration = (Math.min(200, Math.max(0, score - 50)))* (1/200);
+
+	var potentialMaximumInteger = (1 + probabilityForRandomDuration + probabilityForSmallDuration);
+	//console.log(probabilityForSmallDuration + " - " + probabilityForRandomDuration + " - " + potentialMaximumInteger);
+
+	var randomInt = Math.floor(Math.random() * potentialMaximumInteger);
+	if(randomInt == 0)
+	{
+		return Math.floor(Math.random() * 100 + influence) + 500;
+	}
+	else if(randomInt == 1)
+	{
+		return Math.floor(Math.random() * 400 + influence) + 200;
+	}
+	else if(randomInt == 2)
+	{
+		return Math.floor(Math.random() * 100 + influence) + 200;
+	}
+}
+
+//Calculates the required speed for a star to reach the object.
+//If timediff is 0, speed is 0.5.
+//Depending on timediff, speed will be adjusted so that the object reaches the required distance within the time
+//The distance may also differ from the typical distance (Half of game width - 80). If so, speed will be adjusted as well.
+function calculateRequiredSpeed(distance, timeDiff) {
+	//Calculate typical time taken to complete that distance
+	var expectedTime = typicalTime + timeDiff;
+	return distance/expectedTime;
+}
+
+function gameOver() {
+	starPool.killAll();
+
+	//Save the high score
+	highScore.newBestCombo(maxCombo);
+	highScore.addScore(score);
+	localStorage.setItem('highscore', highScore.toString());
+	
+	restartSprite = game.add.sprite(game.width/2, game.height/2, 'restart');
+	restartSprite.inputEnabled = true;
+	restartSprite.anchor.x = 0.5;
+	restartSprite.anchor.y = 0.5;
+	restartSprite.events.onInputDown.add(function() {
+		movePlayersBack();
+		reset();
+	}, restartSprite);
+
+	backToMenu = new LabelButton(game, game.width/2, game.height/2 + 150, 'Back to Menu', function() {
+		if(backToMenu !== null)
+		{
+			backToMenu.destroy();
+			backToMenu = null;
+		}
+
+		if(restartSprite !== null)
+		{
+			restartSprite.destroy();
+			restartSprite = null;
+		}
+		displayMenu();
+	});
+
+	if(audioPlaying)
+	{
+		playingSource.stop(0);
+		audioPlaying = false;
+	}
+
+	movePlayersBack();
+}
+
+//Move players back to normal position
+function movePlayersBack()
+{
+	for(var i = 0; i < 4; i++)
+	{       
+		var angle = i*90;
+		var expectedX = game.width/2 - Math.cos(game.math.degToRad(angle)) * distanceFromCenter;
+		var expectedY = game.height/2 - Math.sin(game.math.degToRad(angle)) * distanceFromCenter;
+		players[i].move(expectedX - players[i].x, expectedY - players[i].y);
+	}
+}
+
+function movePlayerRandom()
+{
+	// 0 1 2
+	// 3 4 5
+	// 6 7 8
+	var randomSpot = Math.floor(Math.random() * 9);
+	var plannedXDifference = 0, plannedYDifference = 0;
+	if(randomSpot % 3 === 0)
+	{
+		plannedXDifference = game.width/-4;
+	}
+	else if(randomSpot % 3 === 2)
+	{
+		plannedXDifference = game.width/4;
+	}
+
+	if(randomSpot <= 2)
+	{
+		plannedYDifference = game.height/-4;
+	}
+	else if(randomSpot >= 6)
+	{
+		plannedYDifference = game.height/4;
+	}
+
+	for(var i = 0; i < 4; i++)
+	{       
+		var angle = i*90;
+		var expectedX = game.width/2 - Math.cos(game.math.degToRad(angle)) * distanceFromCenter;
+		expectedX += plannedXDifference;
+		var expectedY = game.height/2 - Math.sin(game.math.degToRad(angle)) * distanceFromCenter;
+		expectedY += plannedYDifference;
+		players[i].move(expectedX - players[i].x, expectedY - players[i].y);
+	}
+}
+
+function reset() {
+	if(restartSprite !== null)
+	{
+		restartSprite.destroy();
+		restartSprite = null;
+	}
+	if(backToMenu !== null)
+	{
+		backToMenu.destroy();
+		backToMenu = null;
+	}
+
+	myTimer = 1500;
+	songStartTime = Date.now();
+	started = true;
+	songOver = false;
+	nextBallAppearanceTime = 1500;
+	score = 0;
+	lives = 3;
+	combo = 0;
+	maxCombo = 0;
+	showTutorial = true;
+	playedSounds = [];
+	freeTime = 0;
+
+	if(starSpawnsMerged.length !== 0)
+	{
+		if(audioPlaying)
+		{
+			playingSource.stop(0);
+			audioPlaying = false;
+		}
+		
+		playingSource = audioCtx.createBufferSource();
+		playingSource.connect(audioCtx.destination);
+		//playingSource.connect(analyser);
+		playingSource.buffer = source.buffer;
+		playingSource.start(0);
+		audioPlaying = true;
+		freeTime = nextBallAppearanceTime;
+		nextBallAppearanceTime = starSpawnsMerged[0];
+		audioCounter = 1;
+	}
+
+	starPool.stopAll();
+
+	//Movement plans in difficulty:
+	//At a random score within the boundaries:
+	//from 500-600, move RIGHT
+	//from 600-700, move LEFT
+	//from 700-800, move LEFT
+	//At 800, move back to normal
+	//from 800-900, move UP
+	//from 900-1000, move DOWN
+	//from 1000-1100, move DOWN
+	//At 1100, move back to normal
+	//At random intervals every 100score, pick a random spot in the 3*3 grid, move there
+	var moveLeft = function() {
+		for(var i = 0; i < players.length; i++)
+		{
+			players[i].move(game.width/-4, 0);
+		}
+	}
+	var moveRight = function() {
+		for(var i = 0; i < players.length; i++)
+		{
+			players[i].move(game.width/4, 0);
+		}
+	}
+	var moveUp = function() {
+		for(var i = 0; i < players.length; i++)
+		{
+			players[i].move(0, game.height/-4);
+		}
+	}
+	var moveDown = function() {
+		for(var i = 0; i < players.length; i++)
+		{
+			players[i].move(0, game.height/4);
+		}
+	}
+	scoreIntervals = [];
+	//plannedMovements = [];
+	plannedMovements = [moveRight, moveLeft, moveLeft, movePlayersBack, moveUp, moveDown, moveDown, movePlayersBack];
+	for(var i = 0; i < 6; i++)
+	{
+		scoreIntervals.push(Math.floor(Math.random() * 100) + ((i+5) * 100))
+		if(i == 2)
+		{
+			scoreIntervals.push(800);
+		}
+		else if(i == 5)
+		{
+			scoreIntervals.push(1100);
+		}
+	}
+
+	for(var i = 0; i < players.length; i++)
+	{
+		players[i].visible = true;
+	}
+	for(var i = 0; i < menuButtons.length; i++)
+	{
+		menuButtons[i].hide();
+	}
+	for(var i = 0; i < musicButtons.length; i++)
+	{
+		musicButtons[i].hide();
+	}
+}
+
+function loadMusic(url, callback, loadCallback, context)
+{
+	cancelAudio = false;
+
+	var dataArray;
+
+	var request = new XMLHttpRequest();
+	request.open('GET', url, true);
+	request.responseType = 'arraybuffer';
+
+	request.onload = function() {
+		if(request.status !== 200)
+		{
+			//SO HACKY
+			context.onPress();
+			highScoreText.text += "\nAn error occured: server returned " + request.status;
+		}
+		if(cancelAudio)
+		{
+			return;
+		}
+		console.log("Reply received");
+		audiodata = request.response;
+		var continueOn = true;
+		if(loadCallback !== undefined)
+		{
+			continueOn = loadCallback.call(context, audiodata);
+		}
+		if(continueOn)
+		{
+			decodeMusic(audiodata, callback, context);
+		}
+		
+	};
+	request.error = function() {
+		alert("There was an error!");
+	};
+	request.abort = function() {
+		alert("Request aborted");
+	};
+	request.send();
+}
+
+function decodeMusic(audiodata, callback, context)
+{
+	cancelAudio = false;
+	console.log("Beginnning decoding...")
+	audioCtx.decodeAudioData(audiodata, function(buffer) {
+		console.log("Decoding done.");
+		source = audioCtx.createBufferSource();
+		if(cancelAudio)
+		{
+			return;
+		}
+		console.log("Data decoded");
+		source.connect(audioCtx.destination);
+		source.buffer = buffer;
+		source.loop = false;
+		callback.call(context);
+	});
+}
+
+//Runs a new, identical music thread that starts earlier so that we can analyze the music notes
+//to know when the stars will appear in advance.
+//I am unable to find any way to pre-analyze the music faster than realtime. OfflineAudioContext does not work
+//when synced to AnalyserNode and a ScriptProcessor.
+//https://stackoverflow.com/questions/8074152/is-there-a-way-to-use-the-web-audio-api-to-sample-audio-faster-than-real-time
+//https://stackoverflow.com/questions/9317766/audio-data-preprocessing-using-audio-tag-and-javascript
+//https://stackoverflow.com/questions/8699134/extracting-the-song-frequency-of-an-mp3-file-using-html5-web-audio-api
+//https://stackoverflow.com/questions/25368596/web-audio-offline-context-and-analyser-node
+function analyzeMusicAsync()
+{
+	starSpawnsMerged = [];
+	starSpawnsRed = [];
+	lastKnownArrayAnalysisData = undefined;
+
+	analyzeSource = analyzeAudioCtx.createBufferSource();
+	//playingSource.connect(audioCtx.destination);
+	analyzeSource.connect(analyser);
+	analyzeSource.buffer = source.buffer;
+	totalSongLength = source.buffer.duration * 1000;
+	//Make sure no sound play from the analyze source
+	var gainNode = analyzeAudioCtx.createGain();
+	analyzeSource.connect(gainNode);
+	gainNode.connect(analyzeAudioCtx.destination);
+	gainNode.gain.value = 0;
+	scriptProcessor.connect(analyzeAudioCtx.destination);
+
+	analyzeSource.start(0);
+	//totalSongLength = source.buffer.duration * 1000;
+	musicPlayingStartingTime = Date.now();
+	//analyzingTimeDelay = totalSongLength;
+}
+
+function cancelMusicAnalysis()
+{
+	if(totalSongLength > 0)
+	{
+		analyzeSource.disconnect(analyser);
+		scriptProcessor.disconnect(analyzeAudioCtx.destination);
+		totalSongLength = 0;
+		analysisText.text = "Cancelled";
+	}
+}
+
+function getPeaks(percentageOfSecond)
+{
+	var channelData = source.buffer.getChannelData(0);
+	var lowPeaks = [], highPeaks = [];
+	var min = 0, max = 0;
+	var counter = 0;
+
+	for(var i = 0; i < channelData.length; i++)
+	{
+		if(counter != 0 && counter % (source.buffer.sampleRate * percentageOfSecond) == 0)
+		{
+			lowPeaks.push(min);
+			highPeaks.push(max);
+			min = 0;
+			max = 0;
+		}
+		if(min == 0 && max == 0)
+		{
+			min = channelData[i];
+			max = channelData[i];
+		}
+		if(channelData[i] > max)
+		{
+			max = channelData[i];
+		}
+		else if(channelData[i] < min)
+		{
+			min = channelData[i];
+		}
+		counter++;
+	}
+
+	console.log(lowPeaks);
+	console.log(highPeaks);
+
+	//Calculate when stars should spawn
+	//var starSpawnsLow = [];
+	//var starSpawnsHigh = [];
+	starSpawnsMerged = [];
+	starSpawnsRed = [];
+	for(var i = 1; i < lowPeaks.length && i < highPeaks.length; i++)
+	{
+		if((Math.abs(lowPeaks[i]) - Math.abs(lowPeaks[i-1]) > 0.1) && (Math.abs(highPeaks[i]) - Math.abs(highPeaks[i-1]) > 0.1))
+		{
+			var value = (i * percentageOfSecond * 1000) - typicalTime;
+			if(value > 0)
+			{
+				starSpawnsMerged.push(value);
+			}
+		}
+	}
+
+	console.log(starSpawnsMerged);
+	console.log(starSpawnsRed);
+}
+
+</script>
+
+</body>
+</html>
